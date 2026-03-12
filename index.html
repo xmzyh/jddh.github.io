@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>京东结算链接 · 自动二维码</title>
+<style>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+body {
+  background: #f5f7fa;
+  padding: 20px 14px;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+.page-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1d21;
+  text-align: center;
+  margin-bottom: 20px;
+}
+#inputArea {
+  margin-bottom: 16px;
+}
+textarea {
+  width: 100%;
+  height: 160px;
+  padding: 14px;
+  font-size: 14px;
+  border: 1px solid #e5e6eb;
+  border-radius: 12px;
+  outline: none;
+  background: #fff;
+}
+.result {
+  margin-top: 20px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+}
+.item {
+  background: #fff;
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.item-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1d2129;
+  text-align: center;
+  line-height: 1.4;
+  word-break: break-all;
+}
+.qrcode {
+  width: 130px;
+  height: 130px;
+  border-radius: 8px;
+  border: 1px solid #eee;
+  padding: 6px;
+  background: #fff;
+  cursor: pointer;
+}
+.empty {
+  grid-column: 1/-1;
+  text-align: center;
+  padding: 40px 20px;
+  color: #86909c;
+  font-size: 14px;
+}
+</style>
+</head>
+<body>
+
+<h2 class="page-title">京东商品自动二维码工具</h2>
+
+<div id="inputArea">
+  <textarea id="input" placeholder="粘贴内容后自动生成二维码，自动隐藏输入框"></textarea>
+</div>
+
+<div class="result" id="result"></div>
+
+<script src="https://cdn.bootcdn.net/ajax/libs/qrcode/1.5.1/qrcode.min.js"></script>
+<script>
+const input = document.getElementById('input');
+const result = document.getElementById('result');
+const inputArea = document.getElementById('inputArea');
+
+let goods = [];
+
+input.addEventListener('input', extractAndMakeQrcode);
+
+async function extractAndMakeQrcode() {
+  const text = input.value.trim();
+  if (!text) {
+    result.innerHTML = '';
+    goods = [];
+    inputArea.style.display = 'block';
+    return;
+  }
+
+  try {
+    const reg = /"skuName"\s*:\s*"([^"]*)"[\s\S]*?"skipLink"\s*:\s*"([^"]*)"/g;
+    let match;
+    goods = [];
+    let i = 1;
+
+    while ((match = reg.exec(text)) !== null) {
+      const name = match[1].trim();
+      const skipLink = decodeURIComponent(match[2].trim());
+
+      const bt = getParam(skipLink, 'businessType');
+      const act = getParam(skipLink, 'activityId');
+      const sku = getParam(skipLink, 'skuId');
+
+      let link = 'https://m-sep.jd.com/Settlement?showhead=no';
+      if (bt) link += '&businessType=' + bt;
+      if (act) link += '&activityId=' + act;
+      if (sku) link += '&skuId=' + sku;
+
+      goods.push({ name, link, index: i });
+      i++;
+    }
+
+    if (goods.length === 0) {
+      result.innerHTML = '<div class="empty">未匹配到商品信息</div>';
+      return;
+    }
+
+    inputArea.style.display = 'none';
+    result.innerHTML = '';
+
+    for (const item of goods) {
+      const dataUrl = await QRCode.toDataURL(item.link, { width: 130, margin: 1 });
+      const html = `
+        <div class="item">
+          <div class="item-name">【${item.index}】${item.name}</div>
+          <img src="${dataUrl}" class="qrcode" onclick="window.open('${item.link}', '_blank')">
+        </div>
+      `;
+      result.innerHTML += html;
+    }
+
+  } catch (e) {
+    result.innerHTML = `<div class="empty">错误：${e.message}</div>`;
+  }
+}
+
+function getParam(url, key) {
+  const m = new RegExp('[?&]' + key + '=([^&]+)').exec(url);
+  return m ? m[1] : '';
+}
+</script>
+</body>
+</html>
