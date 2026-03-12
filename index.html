@@ -2,7 +2,8 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- 优化视口设置，增强移动端适配 -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>京东结算链接 · 自动二维码</title>
 <style>
 * {
@@ -16,32 +17,44 @@ body {
   padding: 20px 14px;
   max-width: 1000px;
   margin: 0 auto;
+  /* 确保body占满屏幕高度 */
+  min-height: 100vh;
 }
 .page-title {
   font-size: 20px;
   font-weight: 600;
-  color: #1d21;
+  /* 修改为纯黑色字体 */
+  color: #000000;
   text-align: center;
   margin-bottom: 20px;
+  /* 适配不同屏幕的字体大小 */
+  font-size: clamp(18px, 5vw, 24px);
 }
 #inputArea {
   margin-bottom: 16px;
+  width: 100%;
 }
 textarea {
   width: 100%;
-  height: 160px;
+  /* 自适应高度 */
+  min-height: 120px;
+  max-height: 200px;
   padding: 14px;
   font-size: 14px;
   border: 1px solid #e5e6eb;
   border-radius: 12px;
   outline: none;
   background: #fff;
+  /* 移动端触摸优化 */
+  -webkit-tap-highlight-color: transparent;
 }
 .result {
   margin-top: 20px;
+  /* 响应式网格布局 */
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 14px;
+  width: 100%;
 }
 .item {
   background: #fff;
@@ -52,9 +65,12 @@ textarea {
   flex-direction: column;
   align-items: center;
   gap: 10px;
+  /* 移动端触摸优化 */
+  -webkit-tap-highlight-color: transparent;
 }
 .item-name {
-  font-size: 14px;
+  /* 适配移动端字体大小 */
+  font-size: clamp(12px, 3vw, 14px);
   font-weight: 500;
   color: #1d2129;
   text-align: center;
@@ -62,13 +78,16 @@ textarea {
   word-break: break-all;
 }
 .qrcode {
-  width: 130px;
-  height: 130px;
+  /* 自适应二维码大小 */
+  width: clamp(100px, 40vw, 130px);
+  height: clamp(100px, 40vw, 130px);
   border-radius: 8px;
   border: 1px solid #eee;
   padding: 6px;
   background: #fff;
   cursor: pointer;
+  /* 确保二维码清晰 */
+  object-fit: contain;
 }
 .empty {
   grid-column: 1/-1;
@@ -76,6 +95,26 @@ textarea {
   padding: 40px 20px;
   color: #86909c;
   font-size: 14px;
+}
+
+/* 小屏幕适配 */
+@media (max-width: 375px) {
+  body {
+    padding: 15px 10px;
+  }
+  .result {
+    gap: 10px;
+  }
+  .item {
+    padding: 12px;
+  }
+}
+
+/* 大屏幕适配 */
+@media (min-width: 768px) {
+  .result {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }
 </style>
 </head>
@@ -140,7 +179,10 @@ async function extractAndMakeQrcode() {
     result.innerHTML = '';
 
     for (const item of goods) {
-      const dataUrl = await QRCode.toDataURL(item.link, { width: 130, margin: 1 });
+      const dataUrl = await QRCode.toDataURL(item.link, { 
+        width: Math.min(window.innerWidth * 0.4, 130), // 二维码宽度自适应
+        margin: 1 
+      });
       const html = `
         <div class="item">
           <div class="item-name">【${item.index}】${item.name}</div>
@@ -159,6 +201,13 @@ function getParam(url, key) {
   const m = new RegExp('[?&]' + key + '=([^&]+)').exec(url);
   return m ? m[1] : '';
 }
+
+// 窗口大小变化时重新生成二维码以适配
+window.addEventListener('resize', () => {
+  if (goods.length > 0) {
+    extractAndMakeQrcode();
+  }
+});
 </script>
 </body>
 </html>
