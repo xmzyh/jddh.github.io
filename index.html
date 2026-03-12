@@ -2,9 +2,8 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<!-- 优化视口设置，增强移动端适配 -->
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>京东结算链接 · 自动二维码</title>
+<title>京豆商品兑换直链</title>
 <style>
 * {
   margin: 0;
@@ -17,18 +16,14 @@ body {
   padding: 20px 14px;
   max-width: 1000px;
   margin: 0 auto;
-  /* 确保body占满屏幕高度 */
   min-height: 100vh;
 }
 .page-title {
-  font-size: 20px;
+  font-size: clamp(18px, 5vw, 24px);
   font-weight: 600;
-  /* 修改为纯黑色字体 */
   color: #000000;
   text-align: center;
   margin-bottom: 20px;
-  /* 适配不同屏幕的字体大小 */
-  font-size: clamp(18px, 5vw, 24px);
 }
 #inputArea {
   margin-bottom: 16px;
@@ -36,7 +31,6 @@ body {
 }
 textarea {
   width: 100%;
-  /* 自适应高度 */
   min-height: 120px;
   max-height: 200px;
   padding: 14px;
@@ -45,12 +39,32 @@ textarea {
   border-radius: 12px;
   outline: none;
   background: #fff;
-  /* 移动端触摸优化 */
   -webkit-tap-highlight-color: transparent;
 }
 .result {
   margin-top: 20px;
-  /* 响应式网格布局 */
+  width: 100%;
+}
+.session-section {
+  margin-bottom: 24px;
+}
+.session-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #000;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 5px rgba(0,0,0,0.05);
+}
+.session-11 {
+  border-left: 4px solid #4285f4;
+}
+.session-20 {
+  border-left: 4px solid #f63;
+}
+.items-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 14px;
@@ -65,11 +79,9 @@ textarea {
   flex-direction: column;
   align-items: center;
   gap: 10px;
-  /* 移动端触摸优化 */
   -webkit-tap-highlight-color: transparent;
 }
 .item-name {
-  /* 适配移动端字体大小 */
   font-size: clamp(12px, 3vw, 14px);
   font-weight: 500;
   color: #1d2129;
@@ -77,8 +89,20 @@ textarea {
   line-height: 1.4;
   word-break: break-all;
 }
+.item-session {
+  font-size: 12px;
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-top: 4px;
+}
+.session-11-tag {
+  background: #4285f4;
+}
+.session-20-tag {
+  background: #f63;
+}
 .qrcode {
-  /* 自适应二维码大小 */
   width: clamp(100px, 40vw, 130px);
   height: clamp(100px, 40vw, 130px);
   border-radius: 8px;
@@ -86,7 +110,6 @@ textarea {
   padding: 6px;
   background: #fff;
   cursor: pointer;
-  /* 确保二维码清晰 */
   object-fit: contain;
 }
 .empty {
@@ -95,6 +118,9 @@ textarea {
   padding: 40px 20px;
   color: #86909c;
   font-size: 14px;
+  background: #fff;
+  border-radius: 12px;
+  margin: 10px 0;
 }
 
 /* 小屏幕适配 */
@@ -102,7 +128,7 @@ textarea {
   body {
     padding: 15px 10px;
   }
-  .result {
+  .items-grid {
     gap: 10px;
   }
   .item {
@@ -112,7 +138,7 @@ textarea {
 
 /* 大屏幕适配 */
 @media (min-width: 768px) {
-  .result {
+  .items-grid {
     grid-template-columns: repeat(3, 1fr);
   }
 }
@@ -120,7 +146,7 @@ textarea {
 </head>
 <body>
 
-<h2 class="page-title">京东商品自动二维码工具</h2>
+<h2 class="page-title">京豆商品兑换直链</h2>
 
 <div id="inputArea">
   <textarea id="input" placeholder="粘贴内容后自动生成二维码，自动隐藏输入框"></textarea>
@@ -148,48 +174,126 @@ async function extractAndMakeQrcode() {
   }
 
   try {
-    const reg = /"skuName"\s*:\s*"([^"]*)"[\s\S]*?"skipLink"\s*:\s*"([^"]*)"/g;
-    let match;
-    goods = [];
+    // 分类存储不同场次的商品
+    const session11Goods = []; // 11:00场
+    const session20Goods = []; // 20:00场
     let i = 1;
 
-    while ((match = reg.exec(text)) !== null) {
-      const name = match[1].trim();
-      const skipLink = decodeURIComponent(match[2].trim());
+    // 匹配商品信息的正则（包含时间字段）
+    const reg = /"skuName"\s*:\s*"([^"]*)"[\s\S]*?"skipLink"\s*:\s*"([^"]*)"[\s\S]*?(activityStartTime":"20:00","activityEndTime":"23:59)/g;
+    let match;
+    
+    // 先匹配所有商品基础信息
+    const baseReg = /"skuName"\s*:\s*"([^"]*)"[\s\S]*?"skipLink"\s*:\s*"([^"]*)"/g;
+    let baseMatch;
+    let allGoods = [];
+    
+    // 提取所有商品基础信息
+    while ((baseMatch = baseReg.exec(text)) !== null) {
+      allGoods.push({
+        name: baseMatch[1].trim(),
+        skipLink: decodeURIComponent(baseMatch[2].trim()),
+        position: baseReg.lastIndex // 记录匹配位置
+      });
+    }
 
-      const bt = getParam(skipLink, 'businessType');
-      const act = getParam(skipLink, 'activityId');
-      const sku = getParam(skipLink, 'skuId');
+    // 重新遍历文本，判断每个商品所属场次
+    allGoods.forEach(good => {
+      // 检查该商品位置是否在时间字段之前
+      const timeFieldIndex = text.indexOf('activityStartTime":"20:00","activityEndTime":"23:59', good.position);
+      
+      let sessionType = '11'; // 默认11:00场
+      if (timeFieldIndex !== -1 && good.position > timeFieldIndex) {
+        // 商品位置在时间字段之后，归为20:00场
+        sessionType = '20';
+      }
+      
+      // 解析链接参数
+      const bt = getParam(good.skipLink, 'businessType');
+      const act = getParam(good.skipLink, 'activityId');
+      const sku = getParam(good.skipLink, 'skuId');
 
       let link = 'https://m-sep.jd.com/Settlement?showhead=no';
       if (bt) link += '&businessType=' + bt;
       if (act) link += '&activityId=' + act;
       if (sku) link += '&skuId=' + sku;
 
-      goods.push({ name, link, index: i });
-      i++;
-    }
+      const goodsItem = {
+        name: good.name,
+        link: link,
+        index: i++,
+        sessionType: sessionType
+      };
 
-    if (goods.length === 0) {
+      if (sessionType === '11') {
+        session11Goods.push(goodsItem);
+      } else {
+        session20Goods.push(goodsItem);
+      }
+    });
+
+    // 如果没有匹配到商品
+    if (session11Goods.length === 0 && session20Goods.length === 0) {
       result.innerHTML = '<div class="empty">未匹配到商品信息</div>';
       return;
     }
 
+    // 隐藏输入框
     inputArea.style.display = 'none';
     result.innerHTML = '';
 
-    for (const item of goods) {
-      const dataUrl = await QRCode.toDataURL(item.link, { 
-        width: Math.min(window.innerWidth * 0.4, 130), // 二维码宽度自适应
-        margin: 1 
-      });
-      const html = `
-        <div class="item">
-          <div class="item-name">【${item.index}】${item.name}</div>
-          <img src="${dataUrl}" class="qrcode" onclick="window.open('${item.link}', '_blank')">
-        </div>
+    // 生成11:00场的商品
+    if (session11Goods.length > 0) {
+      const session11Section = document.createElement('div');
+      session11Section.className = 'session-section';
+      session11Section.innerHTML = `
+        <div class="session-title session-11">11:00场 (共${session11Goods.length}个商品)</div>
+        <div class="items-grid" id="session11Grid"></div>
       `;
-      result.innerHTML += html;
+      result.appendChild(session11Section);
+
+      const session11Grid = document.getElementById('session11Grid');
+      for (const item of session11Goods) {
+        const dataUrl = await QRCode.toDataURL(item.link, { 
+          width: Math.min(window.innerWidth * 0.4, 130),
+          margin: 1 
+        });
+        const html = `
+          <div class="item">
+            <div class="item-name">【${item.index}】${item.name}</div>
+            <div class="item-session session-11-tag">11:00场</div>
+            <img src="${dataUrl}" class="qrcode" onclick="window.open('${item.link}', '_blank')">
+          </div>
+        `;
+        session11Grid.innerHTML += html;
+      }
+    }
+
+    // 生成20:00场的商品
+    if (session20Goods.length > 0) {
+      const session20Section = document.createElement('div');
+      session20Section.className = 'session-section';
+      session20Section.innerHTML = `
+        <div class="session-title session-20">20:00场 (共${session20Goods.length}个商品)</div>
+        <div class="items-grid" id="session20Grid"></div>
+      `;
+      result.appendChild(session20Section);
+
+      const session20Grid = document.getElementById('session20Grid');
+      for (const item of session20Goods) {
+        const dataUrl = await QRCode.toDataURL(item.link, { 
+          width: Math.min(window.innerWidth * 0.4, 130),
+          margin: 1 
+        });
+        const html = `
+          <div class="item">
+            <div class="item-name">【${item.index}】${item.name}</div>
+            <div class="item-session session-20-tag">20:00场</div>
+            <img src="${dataUrl}" class="qrcode" onclick="window.open('${item.link}', '_blank')">
+          </div>
+        `;
+        session20Grid.innerHTML += html;
+      }
     }
 
   } catch (e) {
