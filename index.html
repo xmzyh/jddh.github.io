@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>京豆商品兑换直链</title>
+<title>京东结算链接 · 自动二维码</title>
 <style>
 * {
   margin: 0;
@@ -122,6 +122,12 @@ textarea {
   border-radius: 12px;
   margin: 10px 0;
 }
+.notice {
+  color: #f63;
+  font-size: 12px;
+  text-align: center;
+  margin: 8px 0;
+}
 
 /* 小屏幕适配 */
 @media (max-width: 375px) {
@@ -146,7 +152,7 @@ textarea {
 </head>
 <body>
 
-<h2 class="page-title">京豆商品兑换直链</h2>
+<h2 class="page-title">京东商品自动二维码工具</h2>
 
 <div id="inputArea">
   <textarea id="input" placeholder="粘贴内容后自动生成二维码，自动隐藏输入框"></textarea>
@@ -160,89 +166,78 @@ const input = document.getElementById('input');
 const result = document.getElementById('result');
 const inputArea = document.getElementById('inputArea');
 
-let goods = [];
-
-input.addEventListener('input', extractAndMakeQrcode);
-
+// 修复核心：正确的位置判断逻辑
 async function extractAndMakeQrcode() {
   const text = input.value.trim();
   if (!text) {
     result.innerHTML = '';
-    goods = [];
     inputArea.style.display = 'block';
     return;
   }
 
   try {
-    // 分类存储不同场次的商品
-    const session11Goods = []; // 11:00场
-    const session20Goods = []; // 20:00场
-    let i = 1;
-
-    // 匹配商品信息的正则（包含时间字段）
-    const reg = /"skuName"\s*:\s*"([^"]*)"[\s\S]*?"skipLink"\s*:\s*"([^"]*)"[\s\S]*?(activityStartTime":"20:00","activityEndTime":"23:59)/g;
-    let match;
+    // 1. 先找到时间字段的位置
+    const timeMarker = '"activityStartTime":"20:00","activityEndTime":"23:59"';
+    const timePosition = text.indexOf(timeMarker);
     
-    // 先匹配所有商品基础信息
-    const baseReg = /"skuName"\s*:\s*"([^"]*)"[\s\S]*?"skipLink"\s*:\s*"([^"]*)"/g;
-    let baseMatch;
-    let allGoods = [];
-    
-    // 提取所有商品基础信息
-    while ((baseMatch = baseReg.exec(text)) !== null) {
-      allGoods.push({
-        name: baseMatch[1].trim(),
-        skipLink: decodeURIComponent(baseMatch[2].trim()),
-        position: baseReg.lastIndex // 记录匹配位置
-      });
+    // 提示信息
+    let noticeHtml = '';
+    if (timePosition === -1) {
+      noticeHtml = '<div class="notice">⚠️ 未检测到时间标记字段，所有商品默认归为11:00场</div>';
     }
 
-    // 重新遍历文本，判断每个商品所属场次
-    allGoods.forEach(good => {
-      // 检查该商品位置是否在时间字段之前
-      const timeFieldIndex = text.indexOf('activityStartTime":"20:00","activityEndTime":"23:59', good.position);
-      
+    // 2. 定义正则表达式匹配商品信息（非贪婪匹配）
+    const goodsReg = /"skuName"\s*:\s*"([^"]+)"[\s\S]*?"skipLink"\s*:\s*"([^"]+)"/g;
+    let match;
+    let goodsList = [];
+    let lastIndex = 0;
+
+    // 3. 遍历匹配所有商品，并记录其在文本中的位置
+    while ((match = goodsReg.exec(text)) !== null) {
+      const goodsPosition = goodsReg.lastIndex; // 商品匹配结束的位置
+      const name = match[1].trim();
+      const skipLink = decodeURIComponent(match[2].trim());
+
+      // 4. 判断商品所属场次
       let sessionType = '11'; // 默认11:00场
-      if (timeFieldIndex !== -1 && good.position > timeFieldIndex) {
-        // 商品位置在时间字段之后，归为20:00场
+      if (timePosition !== -1 && goodsPosition > timePosition) {
+        // 商品位置在时间标记之后 → 20:00场
         sessionType = '20';
       }
-      
-      // 解析链接参数
-      const bt = getParam(good.skipLink, 'businessType');
-      const act = getParam(good.skipLink, 'activityId');
-      const sku = getParam(good.skipLink, 'skuId');
+
+      // 5. 解析链接参数
+      const bt = getParam(skipLink, 'businessType');
+      const act = getParam(skipLink, 'activityId');
+      const sku = getParam(skipLink, 'skuId');
 
       let link = 'https://m-sep.jd.com/Settlement?showhead=no';
       if (bt) link += '&businessType=' + bt;
       if (act) link += '&activityId=' + act;
       if (sku) link += '&skuId=' + sku;
 
-      const goodsItem = {
-        name: good.name,
+      goodsList.push({
+        name: name,
         link: link,
-        index: i++,
-        sessionType: sessionType
-      };
+        sessionType: sessionType,
+        position: goodsPosition
+      });
+    }
 
-      if (sessionType === '11') {
-        session11Goods.push(goodsItem);
-      } else {
-        session20Goods.push(goodsItem);
-      }
-    });
+    // 6. 分类处理商品
+    const session11Goods = goodsList.filter(item => item.sessionType === '11');
+    const session20Goods = goodsList.filter(item => item.sessionType === '20');
 
-    // 如果没有匹配到商品
-    if (session11Goods.length === 0 && session20Goods.length === 0) {
+    // 7. 处理无商品情况
+    if (goodsList.length === 0) {
       result.innerHTML = '<div class="empty">未匹配到商品信息</div>';
       return;
     }
 
-    // 隐藏输入框
+    // 8. 隐藏输入框并生成结果
     inputArea.style.display = 'none';
-    result.innerHTML = '';
+    result.innerHTML = noticeHtml;
 
-    // 生成11:00场的商品
+    // 9. 生成11:00场商品
     if (session11Goods.length > 0) {
       const session11Section = document.createElement('div');
       session11Section.className = 'session-section';
@@ -253,23 +248,25 @@ async function extractAndMakeQrcode() {
       result.appendChild(session11Section);
 
       const session11Grid = document.getElementById('session11Grid');
-      for (const item of session11Goods) {
-        const dataUrl = await QRCode.toDataURL(item.link, { 
+      session11Goods.forEach((item, index) => {
+        // 生成二维码
+        QRCode.toDataURL(item.link, { 
           width: Math.min(window.innerWidth * 0.4, 130),
           margin: 1 
+        }).then(dataUrl => {
+          const html = `
+            <div class="item">
+              <div class="item-name">【${index + 1}】${item.name}</div>
+              <div class="item-session session-11-tag">11:00场</div>
+              <img src="${dataUrl}" class="qrcode" onclick="window.open('${item.link}', '_blank')">
+            </div>
+          `;
+          session11Grid.innerHTML += html;
         });
-        const html = `
-          <div class="item">
-            <div class="item-name">【${item.index}】${item.name}</div>
-            <div class="item-session session-11-tag">11:00场</div>
-            <img src="${dataUrl}" class="qrcode" onclick="window.open('${item.link}', '_blank')">
-          </div>
-        `;
-        session11Grid.innerHTML += html;
-      }
+      });
     }
 
-    // 生成20:00场的商品
+    // 10. 生成20:00场商品
     if (session20Goods.length > 0) {
       const session20Section = document.createElement('div');
       session20Section.className = 'session-section';
@@ -280,35 +277,42 @@ async function extractAndMakeQrcode() {
       result.appendChild(session20Section);
 
       const session20Grid = document.getElementById('session20Grid');
-      for (const item of session20Goods) {
-        const dataUrl = await QRCode.toDataURL(item.link, { 
+      session20Goods.forEach((item, index) => {
+        // 生成二维码
+        QRCode.toDataURL(item.link, { 
           width: Math.min(window.innerWidth * 0.4, 130),
           margin: 1 
+        }).then(dataUrl => {
+          const html = `
+            <div class="item">
+              <div class="item-name">【${index + 1}】${item.name}</div>
+              <div class="item-session session-20-tag">20:00场</div>
+              <img src="${dataUrl}" class="qrcode" onclick="window.open('${item.link}', '_blank')">
+            </div>
+          `;
+          session20Grid.innerHTML += html;
         });
-        const html = `
-          <div class="item">
-            <div class="item-name">【${item.index}】${item.name}</div>
-            <div class="item-session session-20-tag">20:00场</div>
-            <img src="${dataUrl}" class="qrcode" onclick="window.open('${item.link}', '_blank')">
-          </div>
-        `;
-        session20Grid.innerHTML += html;
-      }
+      });
     }
 
   } catch (e) {
     result.innerHTML = `<div class="empty">错误：${e.message}</div>`;
+    console.error('处理出错：', e);
   }
 }
 
+// 提取URL参数的工具函数
 function getParam(url, key) {
   const m = new RegExp('[?&]' + key + '=([^&]+)').exec(url);
   return m ? m[1] : '';
 }
 
-// 窗口大小变化时重新生成二维码以适配
+// 绑定输入事件
+input.addEventListener('input', extractAndMakeQrcode);
+
+// 窗口大小变化时重新生成
 window.addEventListener('resize', () => {
-  if (goods.length > 0) {
+  if (input.value.trim()) {
     extractAndMakeQrcode();
   }
 });
